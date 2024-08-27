@@ -1,8 +1,21 @@
+#define _GNU_SOURCE
+#include <fcntl.h>
+#include <pdfio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <time.h>
+#include <unistd.h>
 #include "pdf.h"
+
+
+#define MAX_PATH 1024
+#define BUFFER_SIZE 4096
+
+#define BUF_ADD(fmt, ...) \
+	fprintf(out, fmt, ##__VA_ARGS__);
 
 static const struct {
 	const char *method;
@@ -19,11 +32,67 @@ static const struct {
 	[WASI_HTTP_TYPES_METHOD_OTHER]	 = { "OTHER"   }
 };
 
+void show_pdf_info(const int fd, FILE *out)
+{
+  pdfio_file_t *pdf;
+  time_t       creation_date;
+  struct tm    *creation_tm;
+  char         creation_text[256];
+
+
+  // Open the PDF file with the default callbacks...
+  pdf = pdfioMemFileOpen(fd, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
+  if (pdf == NULL)
+    return;
+
+  // Get the creation date and convert to a string...
+  creation_date = pdfioFileGetCreationDate(pdf);
+  creation_tm   = localtime(&creation_date);
+  strftime(creation_text, sizeof(creation_text), "%c", &creation_tm);
+
+  // Print file information to stdout...
+  printf("         Title: %s\n", pdfioFileGetTitle(pdf));
+  printf("        Author: %s\n", pdfioFileGetAuthor(pdf));
+  printf("    Created On: %s\n", creation_text);
+  printf("  Number Pages: %u\n", (unsigned)pdfioFileGetNumPages(pdf));
+
+  // Close the PDF file...
+  pdfioFileClose(pdf);
+}
+
+
+int write_to_memfd(pdf_list_u8_t *data, FILE *out) {
+	int fd;
+	ssize_t written;
+	// Create file descriptor in memory
+	fd = memfd_create("pdf", 0);
+	if (fd == -1) {
+		BUF_ADD("Failed to create file\n");
+		return -1;
+	}
+	// Write the pdf to file
+	written = write(fd, data->ptr, data->len);
+	if (written != data->len) {
+		BUF_ADD("Failed to write to file descriptor\n");
+		close(fd);
+		return -1;
+	}
+
+	if(lseek(fd, 0, SEEK_SET) == -1) {
+		BUF_ADD("lseek failed\n");
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+
 void exports_wasi_http_incoming_handler_handle(
 	exports_wasi_http_incoming_handler_own_incoming_request_t request,
 	exports_wasi_http_incoming_handler_own_response_outparam_t response_out)
 {
 	FILE *out;
+	int fd;
 	size_t size;
 	char *out_ptr;
 	char *ptr;
@@ -59,9 +128,6 @@ void exports_wasi_http_incoming_handler_handle(
 
 	out = open_memstream(&out_ptr, &size);
 
-#define BUF_ADD(fmt, ...) \
-	fprintf(out, fmt, ##__VA_ARGS__);
-
 	BUF_ADD("*** WasmCloud with C ***\n\n");
 
 	BUF_ADD("[Request Info]\n");
@@ -95,12 +161,13 @@ void exports_wasi_http_incoming_handler_handle(
 							     8 * 1024*1024,   
 							     &data,           
 							     &in_stream_err);
-
 	if (method.tag == WASI_HTTP_TYPES_METHOD_POST ||
 		method.tag == WASI_HTTP_TYPES_METHOD_PUT) {
 		BUF_ADD("\n[%s data]\n",
 	  http_method_map[method.tag].method);
 		BUF_ADD("%.*s\n", (int)data.len, data.ptr);
+		fd = write_to_memfd(&data, out);
+		show_pdf_info(fd, out);
 	}
 
 	fclose(out);
