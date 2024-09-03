@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <fcntl.h>
 #include <pdfio.h>
 #include <stdio.h>
@@ -12,7 +11,7 @@
 
 
 #define MAX_PATH 1024
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 500000
 
 #define BUF_ADD(fmt, ...) \
 	fprintf(out, fmt, ##__VA_ARGS__);
@@ -32,7 +31,7 @@ static const struct {
 	[WASI_HTTP_TYPES_METHOD_OTHER]	 = { "OTHER"   }
 };
 
-void show_pdf_info(const int fd, FILE *out)
+void show_pdf_info(pdf_list_u8_t *data, FILE *out)
 {
   pdfio_file_t *pdf;
   time_t       creation_date;
@@ -41,7 +40,7 @@ void show_pdf_info(const int fd, FILE *out)
 
 
   // Open the PDF file with the default callbacks...
-  pdf = pdfioMemFileOpen(fd, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
+  pdf = pdfioMemBufOpen(data->ptr, data->len, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
   if (pdf == NULL)
     return;
 
@@ -60,32 +59,59 @@ void show_pdf_info(const int fd, FILE *out)
   pdfioFileClose(pdf);
 }
 
+wasi_filesystem_types_own_descriptor_t write_to_file(const char *filename, pdf_list_u8_t *write_data, FILE *out) {
+	wasi_filesystem_types_own_descriptor_t ret = { -1 };
+	wasi_filesystem_types_descriptor_flags_t flags = WASI_FILESYSTEM_TYPES_DESCRIPTOR_FLAGS_WRITE;
+	wasi_filesystem_types_open_flags_t open_flags = WASI_FILESYSTEM_TYPES_OPEN_FLAGS_CREATE | WASI_FILESYSTEM_TYPES_OPEN_FLAGS_TRUNCATE;
+	wasi_filesystem_types_error_code_t err;
+	wasi_filesystem_types_own_descriptor_t fd;
+	pdf_string_t path = {
+		.ptr = (uint8_t *)filename,
+		.len = strlen(filename)
+	};
+	wasi_filesystem_preopens_list_tuple2_own_descriptor_string_t *directories;
+	wasi_filesystem_types_borrow_descriptor_t base_fd;
 
-int write_to_memfd(pdf_list_u8_t *data, FILE *out) {
-	int fd;
-	ssize_t written;
-	// Create file descriptor in memory
-	fd = memfd_create("pdf", 0);
-	if (fd == -1) {
-		BUF_ADD("Failed to create file\n");
-		return -1;
+	wasi_filesystem_preopens_get_directories(directories);
+	if (directories->len == 0) {
+		BUF_ADD("No filesystem access provided\n");
+		return ret;
 	}
-	// Write the pdf to file
-	written = write(fd, data->ptr, data->len);
-	if (written != data->len) {
-		BUF_ADD("Failed to write to file descriptor\n");
-		close(fd);
-		return -1;
+	base_fd = wasi_filesystem_types_borrow_descriptor(directories->ptr[0].f0);
+
+	// Open the file
+	bool success = wasi_filesystem_types_method_descriptor_open_at(
+		base_fd,
+		WASI_FILESYSTEM_TYPES_PATH_FLAGS_SYMLINK_FOLLOW,
+		&path,
+		open_flags,
+		flags,
+		&fd,
+		&err
+	);
+
+	if (!success) {
+		BUF_ADD("Unable to open file %s\n", filename);
+		return ret;
 	}
 
-	if(lseek(fd, 0, SEEK_SET) == -1) {
-		BUF_ADD("lseek failed\n");
-		close(fd);
-		return -1;
+	// Write to the file
+	wasi_filesystem_types_filesize_t bytes_written;
+
+	success = wasi_filesystem_types_method_descriptor_write(
+		wasi_filesystem_types_borrow_descriptor(fd),
+		write_data,
+		0,
+		&bytes_written,
+		&err
+	);
+
+	if (!success || bytes_written != write_data->len) {
+		return ret;
 	}
+
 	return fd;
 }
-
 
 void exports_wasi_http_incoming_handler_handle(
 	exports_wasi_http_incoming_handler_own_incoming_request_t request,
@@ -166,8 +192,7 @@ void exports_wasi_http_incoming_handler_handle(
 		BUF_ADD("\n[%s data]\n",
 	  http_method_map[method.tag].method);
 		BUF_ADD("%.*s\n", (int)data.len, data.ptr);
-		fd = write_to_memfd(&data, out);
-		show_pdf_info(fd, out);
+		show_pdf_info(&data, out);
 	}
 
 	fclose(out);
