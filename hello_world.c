@@ -47,70 +47,16 @@ void show_pdf_info(pdf_list_u8_t *data, FILE *out)
   // Get the creation date and convert to a string...
   creation_date = pdfioFileGetCreationDate(pdf);
   creation_tm   = localtime(&creation_date);
-  strftime(creation_text, sizeof(creation_text), "%c", &creation_tm);
+  strftime(creation_text, sizeof(creation_text), "%c", creation_tm);
 
   // Print file information to stdout...
-  printf("         Title: %s\n", pdfioFileGetTitle(pdf));
-  printf("        Author: %s\n", pdfioFileGetAuthor(pdf));
-  printf("    Created On: %s\n", creation_text);
-  printf("  Number Pages: %u\n", (unsigned)pdfioFileGetNumPages(pdf));
+  BUF_ADD("         Title: %s\n", pdfioFileGetTitle(pdf));
+  BUF_ADD("        Author: %s\n", pdfioFileGetAuthor(pdf));
+  BUF_ADD("    Created On: %s\n", creation_text);
+  BUF_ADD("  Number Pages: %u\n", (unsigned)pdfioFileGetNumPages(pdf));
 
   // Close the PDF file...
   pdfioFileClose(pdf);
-}
-
-wasi_filesystem_types_own_descriptor_t write_to_file(const char *filename, pdf_list_u8_t *write_data, FILE *out) {
-	wasi_filesystem_types_own_descriptor_t ret = { -1 };
-	wasi_filesystem_types_descriptor_flags_t flags = WASI_FILESYSTEM_TYPES_DESCRIPTOR_FLAGS_WRITE;
-	wasi_filesystem_types_open_flags_t open_flags = WASI_FILESYSTEM_TYPES_OPEN_FLAGS_CREATE | WASI_FILESYSTEM_TYPES_OPEN_FLAGS_TRUNCATE;
-	wasi_filesystem_types_error_code_t err;
-	wasi_filesystem_types_own_descriptor_t fd;
-	pdf_string_t path = {
-		.ptr = (uint8_t *)filename,
-		.len = strlen(filename)
-	};
-	wasi_filesystem_preopens_list_tuple2_own_descriptor_string_t *directories;
-	wasi_filesystem_types_borrow_descriptor_t base_fd;
-
-	wasi_filesystem_preopens_get_directories(directories);
-	if (directories->len == 0) {
-		BUF_ADD("No filesystem access provided\n");
-		return ret;
-	}
-	base_fd = wasi_filesystem_types_borrow_descriptor(directories->ptr[0].f0);
-
-	// Open the file
-	bool success = wasi_filesystem_types_method_descriptor_open_at(
-		base_fd,
-		WASI_FILESYSTEM_TYPES_PATH_FLAGS_SYMLINK_FOLLOW,
-		&path,
-		open_flags,
-		flags,
-		&fd,
-		&err
-	);
-
-	if (!success) {
-		BUF_ADD("Unable to open file %s\n", filename);
-		return ret;
-	}
-
-	// Write to the file
-	wasi_filesystem_types_filesize_t bytes_written;
-
-	success = wasi_filesystem_types_method_descriptor_write(
-		wasi_filesystem_types_borrow_descriptor(fd),
-		write_data,
-		0,
-		&bytes_written,
-		&err
-	);
-
-	if (!success || bytes_written != write_data->len) {
-		return ret;
-	}
-
-	return fd;
 }
 
 void exports_wasi_http_incoming_handler_handle(
@@ -191,7 +137,6 @@ void exports_wasi_http_incoming_handler_handle(
 		method.tag == WASI_HTTP_TYPES_METHOD_PUT) {
 		BUF_ADD("\n[%s data]\n",
 	  http_method_map[method.tag].method);
-		BUF_ADD("%.*s\n", (int)data.len, data.ptr);
 		show_pdf_info(&data, out);
 	}
 
