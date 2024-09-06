@@ -11,6 +11,7 @@
 
 
 #define MAX_PATH 1024
+#define MAX_READ_BYTES (8 * 1024 * 1024)
 #define BUFFER_SIZE 500000
 
 #define BUF_ADD(fmt, ...) \
@@ -40,7 +41,7 @@ void show_pdf_info(pdf_list_u8_t *data, FILE *out)
 
 
   // Open the PDF file with the default callbacks...
-  pdf = pdfioMemBufOpen(data->ptr, data->len, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
+  pdf = pdfioMemBufOpen((char*)data->ptr, data->len, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
   if (pdf == NULL)
     return;
 
@@ -92,10 +93,11 @@ void exports_wasi_http_incoming_handler_handle(
 	pdf_list_tuple2_field_key_field_value_t fvk;
 	wasi_http_types_own_input_stream_t in_stream;
 	wasi_io_streams_borrow_input_stream_t b_in_stream;
-	pdf_list_u8_t data;
+	pdf_list_u8_t data = {0};  //TODO is this necessary?
 	wasi_io_streams_stream_error_t in_stream_err;
 	pdf_string_t prstr;
 	size_t content_length;
+	bool ok;
 
 	b_req = wasi_http_types_borrow_incoming_request(request);
 
@@ -135,10 +137,38 @@ void exports_wasi_http_incoming_handler_handle(
 	wasi_http_types_method_incoming_body_stream(b_r_body, &in_stream);
 	b_in_stream = wasi_io_streams_borrow_input_stream(in_stream);
 
-	bool ok = wasi_io_streams_method_input_stream_blocking_read(b_in_stream,     
-							     8 * 1024*1024,   
-							     &data,           
-							     &in_stream_err);
+	data.ptr = malloc(content_length);
+	if (data.ptr == NULL) {
+		fprintf(stderr, "Memory allocation failed for content length: %zu\n", content_length);
+	}
+	data.len = 0;
+	while (data.len < content_length) {
+		size_t bytes_to_read = content_length - data.len;
+		if (bytes_to_read > MAX_READ_BYTES) {
+			bytes_to_read = MAX_READ_BYTES;
+		}
+
+		pdf_list_u8_t temp_data = {0};
+		ok = wasi_io_streams_method_input_stream_blocking_read(b_in_stream, bytes_to_read, &temp_data, &in_stream_err);
+		if (!ok) {
+			BUF_ADD("Error reading from stream: %d\n", in_stream_err.tag);
+			free(data.ptr);
+			break;
+		}
+		if (temp_data.len == 0) {
+			// Unexpected end of stream
+			BUF_ADD("Stream ended prematurely. Expected %zu bytes, got %zu\n", content_length, data.len);
+			free(data.ptr);
+			break;
+		}
+
+		// Copy temp_data to data
+		memcpy(data.ptr + data.len, temp_data.ptr, temp_data.len);
+		data.len += temp_data.len;
+
+		pdf_list_u8_free(&temp_data);
+	}
+
 	if (method.tag == WASI_HTTP_TYPES_METHOD_POST ||
 		method.tag == WASI_HTTP_TYPES_METHOD_PUT) {
 		BUF_ADD("\n[%s data]\n",
