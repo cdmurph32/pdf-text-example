@@ -1,5 +1,7 @@
 package wasmcloud:pdf;
 
 world pdf {
+  import wasi:logging/logging;
+
   export wasi:http/incoming-handler@0.2.0;
 }

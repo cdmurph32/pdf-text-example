@@ -3,6 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Imported Functions from `wasi:logging/logging`
+
+__attribute__((__import_module__("wasi:logging/logging"), __import_name__("log")))
+extern void __wasm_import_wasi_logging_logging_log(int32_t, uint8_t *, size_t, uint8_t *, size_t);
+
 // Imported Functions from `wasi:io/poll@0.2.0`
 
 __attribute__((__import_module__("wasi:io/poll@0.2.0"), __import_name__("[method]pollable.ready")))
@@ -846,6 +851,10 @@ void pdf_string_free(pdf_string_t *ret) {
 }
 
 // Component Adapters
+
+void wasi_logging_logging_log(wasi_logging_logging_level_t level, pdf_string_t *context, pdf_string_t *message) {
+  __wasm_import_wasi_logging_logging_log((int32_t) level, (uint8_t *) (*context).ptr, (*context).len, (uint8_t *) (*message).ptr, (*message).len);
+}
 
 bool wasi_io_poll_method_pollable_ready(wasi_io_poll_borrow_pollable_t self) {
   int32_t ret = __wasm_import_wasi_io_poll_method_pollable_ready((self).__handle);

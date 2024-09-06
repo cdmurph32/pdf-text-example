@@ -95,6 +95,7 @@ void exports_wasi_http_incoming_handler_handle(
 	pdf_list_u8_t data;
 	wasi_io_streams_stream_error_t in_stream_err;
 	pdf_string_t prstr;
+	size_t content_length;
 
 	b_req = wasi_http_types_borrow_incoming_request(request);
 
@@ -117,10 +118,15 @@ void exports_wasi_http_incoming_handler_handle(
 	b_hdrs = wasi_http_types_borrow_fields(hdrs);
 
 	wasi_http_types_method_fields_entries(b_hdrs, &fvk);
-	for (size_t i = 0; i < fvk.len; i++)
+	for (size_t i = 0; i < fvk.len; i++) {
 		BUF_ADD("%.*s = %.*s\n",
 	  (int)fvk.ptr[i].f0.len, fvk.ptr[i].f0.ptr,
 	  (int)fvk.ptr[i].f1.len, fvk.ptr[i].f1.ptr);
+		if (fvk.ptr[i].f0.len == 14 && strncasecmp(fvk.ptr[i].f0.ptr, "Content-Length", 14) == 0) {
+			content_length = atoll(fvk.ptr[i].f1.ptr);
+			BUF_ADD("\nContent-Length found: %zu\n", content_length);
+		}
+	}
 
 	pdf_list_tuple2_field_key_field_value_free(&fvk);
 
@@ -137,7 +143,11 @@ void exports_wasi_http_incoming_handler_handle(
 		method.tag == WASI_HTTP_TYPES_METHOD_PUT) {
 		BUF_ADD("\n[%s data]\n",
 	  http_method_map[method.tag].method);
-		show_pdf_info(&data, out);
+		if (data.len == content_length) {
+			show_pdf_info(&data, out);
+		} else {
+			BUF_ADD("\nExpected content of length %zu, got %zu\n", content_length, data.len);
+		}
 	}
 
 	fclose(out);
