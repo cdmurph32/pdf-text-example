@@ -1,5 +1,9 @@
 # Compiled Object files
 *.o
+.gitmodules
+pdf.c
+pdf.h
+pdf_component_type.o
 
 # Wash build artifacts
 build/

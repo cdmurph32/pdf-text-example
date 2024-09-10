@@ -1,10 +1,10 @@
 apiVersion: core.oam.dev/v1beta1
 kind: Application
 metadata:
-  name: c-hello-world
+  name: c-pdf-text
   annotations:
-    description: 'HTTP hello world demo in C, using the WebAssembly Component Model and WebAssembly Interfaces Types (WIT)'
-    wasmcloud.dev/authors: wasmCloud team
+    description: 'A PDF to text component written in C'
+    wasmcloud.dev/authors: Colin Murphy
     wasmcloud.dev/source-url: https://github.com/wasmCloud/wasmCloud/blob/main/examples/rust/components/http-hello-world/wadm.yaml
     wasmcloud.dev/readme-md-url: https://github.com/wasmCloud/wasmCloud/blob/main/examples/rust/components/http-hello-world/README.md
     wasmcloud.dev/homepage: https://github.com/wasmCloud/wasmCloud/tree/main/examples/rust/components/http-hello-world
@@ -12,12 +12,10 @@ metadata:
       http,http-server,rust,hello-world,example
 spec:
   components:
-    - name: http-hello-world-c
+    - name: pdf-text-c
       type: component
       properties:
-        image: file://./build/hello_world1_s.wasm
-        # To use the a precompiled version of this component, use the line below instead:
-        # image: ghcr.io/wasmcloud/components/http-hello-world-rust:0.1.0
+        image: file://./build/pdf_text_s.wasm
       traits:
         # Govern the spread/scheduling of the component
         - type: spreadscaler
@@ -36,7 +34,7 @@ spec:
         # The source (this provider) is configured such that the HTTP server listens on 127.0.0.1:8080
         - type: link
           properties:
-            target: http-hello-world-c
+            target: pdf-text-c
             namespace: wasi
             package: http
             interfaces: [incoming-handler]

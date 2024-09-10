@@ -1,0 +1,6 @@
+[submodule "pdfio/pdfio"]
+	path = pdfio
+	url = git@github.com:cdmurph32/pdfio.git
+[submodule "zlib/zlib"]
+	path = zlib/src
+	url = git@github.com:madler/zlib.git
