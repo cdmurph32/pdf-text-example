@@ -1,5 +1,5 @@
 # pdf-text-example
-Wasmcloud demo of a PDF processing service. *Does not yet work on macOS*
+Wasmcloud demo of a PDF processing service.
 
 ### Prerequisites
 * [wit-bindgen](https://github.com/bytecodealliance/wit-bindgen)

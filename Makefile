@@ -6,6 +6,7 @@ PDF_WASM=pdf_text.wasm
 WASI_SDK_DIR=/opt/wasi-sdk
 AR=$(WASI_SDK_DIR)/bin/ar
 CC=$(WASI_SDK_DIR)/bin/clang
+RANLIB=$(WASI_SDK_DIR)/bin/ranlib
 
 sign: $(PDF_WASM)
 	mkdir -p build && wash claims sign -n pdf-text -v 0.1.0 -r 1 pdf_text.wasm && mv pdf_text_s.wasm build/
@@ -18,7 +19,7 @@ $(ZLIB_WASM):
 
 # Passing LIBS to configure breaks the compiler check for some reason.
 $(PDFIO_WASM):
-	AR=$(AR) CC=$(CC) CFLAGS="-I../zlib/src" ./pdfio/configure --host=wasm32-wasi --srcdir=$(shell pwd)/pdfio --verbose
+	AR=$(AR) CC=$(CC) RANLIB=$(RANLIB) CFLAGS="-I../zlib/src" ./pdfio/configure --host=wasm32-wasi --srcdir=$(shell pwd)/pdfio --verbose
 	cd pdfio && make libpdfio.a LIBS="-L../zlib -lz.wasm -lm"
 
 pdf_component_type.o:
