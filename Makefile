@@ -11,7 +11,7 @@ RANLIB=$(WASI_SDK_DIR)/bin/ranlib
 sign: $(PDF_WASM)
 	mkdir -p build && wash claims sign -n pdf-text -v 0.1.0 -r 1 pdf_text.wasm && mv pdf_text_s.wasm build/
 
-$(PDF_WASM): $(ZLIB_WASM) $(PDFIO_WASM) pdf_component_type.o
+$(PDF_WASM): $(ZLIB_WASM) $(PDFIO_WASM) pdf_component_type.o pdf_text.c
 	$(CC) -target wasm32-wasip2 -mexec-model=reactor -D_WASI_EMULATED_MMAN -lwasi-emulated-mman -z stack-size=2097152 pdf.c pdf_text.c pdf_component_type.o -I ./pdfio -L ./pdfio -L ./zlib -lpdfio -lz.wasm -o pdf_text.wasm
 
 $(ZLIB_WASM):

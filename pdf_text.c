@@ -15,7 +15,7 @@
 #define BUFFER_SIZE 500000
 
 #define BUF_ADD(fmt, ...) \
-	fprintf(out, fmt, ##__VA_ARGS__);
+fprintf(out, fmt, ##__VA_ARGS__);
 
 static const struct {
 	const char *method;
@@ -32,32 +32,82 @@ static const struct {
 	[WASI_HTTP_TYPES_METHOD_OTHER]	 = { "OTHER"   }
 };
 
+void print_pdf_text(pdf_list_u8_t *data, FILE *out)
+{
+	pdfio_file_t *pdf;
+	size_t	i, j,			// Looping vars
+	num_pages,		// Number of pages
+	num_streams;		// Number of streams for page
+	pdfio_obj_t	*obj;			// Current page object
+	pdfio_stream_t *st;			// Current page content stream
+	char		buffer[1024];		// String buffer
+	bool		first;			// First string token?
+
+	pdf = pdfioMemBufOpen((char*)data->ptr, data->len, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
+	for (i = 0, num_pages = pdfioFileGetNumPages(pdf); i < num_pages; i ++) {
+		if ((obj = pdfioFileGetPage(pdf, i)) == NULL) {
+			continue;
+		}
+
+		num_streams = pdfioPageGetNumStreams(obj);
+		//BUF_ADD("page%u=%p, num_streams=%u\n", (unsigned)i, obj, (unsigned)num_streams);
+
+		for (j = 0; j < num_streams; j ++) {
+			if ((st = pdfioPageOpenStream(obj, j, true)) == NULL) {
+				continue;
+			}
+
+			//BUF_ADD("page%u st%u=%p\n", (unsigned)i, (unsigned)j, st);
+			first = true;
+			while (pdfioStreamGetToken(st, buffer, sizeof(buffer))) {
+				if (buffer[0] == '(') {
+					if (first) {
+						first = false;
+					}
+					fputs(buffer + 1, out);
+				}
+				else if (!strcmp(buffer, "Td") || !strcmp(buffer, "TD") || !strcmp(buffer, "T*") || !strcmp(buffer, "\'") || !strcmp(buffer, "\"")) {
+					fputc('\n', out);
+					first = true;
+				}
+			}
+
+			if (!first) {
+				fputc('\n', out);
+			}
+
+			pdfioStreamClose(st);
+		}
+	}
+	pdfioFileClose(pdf);
+}
+
 void show_pdf_info(pdf_list_u8_t *data, FILE *out)
 {
-  pdfio_file_t *pdf;
-  time_t       creation_date;
-  struct tm    *creation_tm;
-  char         creation_text[256];
+	pdfio_file_t *pdf;
+	time_t       creation_date;
+	struct tm    *creation_tm;
+	char         creation_text[256];
 
 
-  // Open the PDF file with the default callbacks...
-  pdf = pdfioMemBufOpen((char*)data->ptr, data->len, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
-  if (pdf == NULL)
-    return;
+	// Open the PDF file with the default callbacks...
+	pdf = pdfioMemBufOpen((char*)data->ptr, data->len, /*password_cb*/NULL, /*password_cbdata*/NULL, /*error_cb*/NULL, /*error_cbdata*/NULL);
+	if (pdf == NULL)
+		return;
 
-  // Get the creation date and convert to a string...
-  creation_date = pdfioFileGetCreationDate(pdf);
-  creation_tm   = localtime(&creation_date);
-  strftime(creation_text, sizeof(creation_text), "%c", creation_tm);
+	// Get the creation date and convert to a string...
+	creation_date = pdfioFileGetCreationDate(pdf);
+	creation_tm   = localtime(&creation_date);
+	strftime(creation_text, sizeof(creation_text), "%c", creation_tm);
 
-  // Print file information to stdout...
-  BUF_ADD("         Title: %s\n", pdfioFileGetTitle(pdf));
-  BUF_ADD("        Author: %s\n", pdfioFileGetAuthor(pdf));
-  BUF_ADD("    Created On: %s\n", creation_text);
-  BUF_ADD("  Number Pages: %u\n", (unsigned)pdfioFileGetNumPages(pdf));
+	// Print file information to stdout...
+	BUF_ADD("         Title: %s\n", pdfioFileGetTitle(pdf));
+	BUF_ADD("        Author: %s\n", pdfioFileGetAuthor(pdf));
+	BUF_ADD("    Created On: %s\n", creation_text);
+	BUF_ADD("  Number Pages: %u\n", (unsigned)pdfioFileGetNumPages(pdf));
 
-  // Close the PDF file...
-  pdfioFileClose(pdf);
+	// Close the PDF file...
+	pdfioFileClose(pdf);
 }
 
 void exports_wasi_http_incoming_handler_handle(
@@ -174,7 +224,7 @@ void exports_wasi_http_incoming_handler_handle(
 		BUF_ADD("\n[%s data]\n",
 	  http_method_map[method.tag].method);
 		if (data.len == content_length) {
-			show_pdf_info(&data, out);
+			print_pdf_text(&data, out);
 		} else {
 			BUF_ADD("\nExpected content of length %zu, got %zu\n", content_length, data.len);
 		}
