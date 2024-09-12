@@ -13,6 +13,7 @@
 #define MAX_PATH 1024
 #define MAX_READ_BYTES (8 * 1024 * 1024)
 #define BUFFER_SIZE 500000
+#define MAX_CHUNK_SIZE 4096
 
 #define BUF_ADD(fmt, ...) \
 fprintf(out, fmt, ##__VA_ARGS__);
@@ -64,6 +65,7 @@ void print_pdf_text(pdf_list_u8_t *data, FILE *out)
 					if (first) {
 						first = false;
 					}
+
 					fputs(buffer + 1, out);
 				}
 				else if (!strcmp(buffer, "Td") || !strcmp(buffer, "TD") || !strcmp(buffer, "T*") || !strcmp(buffer, "\'") || !strcmp(buffer, "\"")) {
@@ -251,12 +253,28 @@ void exports_wasi_http_incoming_handler_handle(
 	wasi_http_types_method_outgoing_body_write(b_body, &out_stream);
 	b_out_stream = wasi_io_streams_borrow_output_stream(out_stream);
 
-	stream_data.len = size;
-	stream_data.ptr = (uint8_t *)out_ptr;
-	ok = wasi_io_streams_method_output_stream_blocking_write_and_flush(     
-		b_out_stream,   
-		&stream_data,   
-		&stream_err);
+	size_t bytes_written = 0;
+	while (bytes_written < size) {
+		size_t chunk_size = size - bytes_written;
+		if (chunk_size > MAX_CHUNK_SIZE) {
+			chunk_size = MAX_CHUNK_SIZE;
+		}
+
+		stream_data.len = chunk_size;
+		stream_data.ptr = (uint8_t *)(out_ptr + bytes_written);
+		ok = wasi_io_streams_method_output_stream_blocking_write_and_flush(
+			b_out_stream,
+			&stream_data,
+			&stream_err);
+
+		if (!ok) {
+			BUF_ADD("Error writing to stream: %d\n", stream_err.tag);
+			break;
+		}
+
+		bytes_written += chunk_size;
+	}
+
 
 	free(out_ptr);
 
