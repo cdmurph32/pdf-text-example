@@ -1,5 +1,4 @@
 #include <fcntl.h>
-#include <pdfio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -8,6 +7,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "pdf.h"
+#include "pdfio/pdfio.h"
 
 
 #define MAX_PATH 1024
@@ -176,8 +176,8 @@ void exports_wasi_http_incoming_handler_handle(
 		BUF_ADD("%.*s = %.*s\n",
 	  (int)fvk.ptr[i].f0.len, fvk.ptr[i].f0.ptr,
 	  (int)fvk.ptr[i].f1.len, fvk.ptr[i].f1.ptr);
-		if (fvk.ptr[i].f0.len == 14 && strncasecmp(fvk.ptr[i].f0.ptr, "Content-Length", 14) == 0) {
-			content_length = atoll(fvk.ptr[i].f1.ptr);
+		if (fvk.ptr[i].f0.len == 14 && strncasecmp((const char *)fvk.ptr[i].f0.ptr, "Content-Length", 14) == 0) {
+			content_length = atoll((const char *)fvk.ptr[i].f1.ptr);
 			BUF_ADD("\nContent-Length found: %zu\n", content_length);
 		}
 	}
@@ -226,6 +226,7 @@ void exports_wasi_http_incoming_handler_handle(
 		BUF_ADD("\n[%s data]\n",
 	  http_method_map[method.tag].method);
 		if (data.len == content_length) {
+			show_pdf_info(&data, out);
 			print_pdf_text(&data, out);
 		} else {
 			BUF_ADD("\nExpected content of length %zu, got %zu\n", content_length, data.len);
